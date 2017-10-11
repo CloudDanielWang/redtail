@@ -3,10 +3,12 @@ FROM nvidia/cuda:8.0-cudnn6-devel-ubuntu16.04
 # Build with:
 # docker build -t nvidia-redtail-sim:kinetic -f Dockerfile.kinetic .
 
-RUN apt-get update && apt-get -y --quiet --no-install-recommends install software-properties-common && \
-    add-apt-repository ppa:ubuntu-toolchain-r/test
+RUN apt-get update && apt-get -y --quiet --no-install-recommends install software-properties-common \
+    && add-apt-repository ppa:ubuntu-toolchain-r/test \
+    && apt-get update
 
 RUN apt-get -y --quiet --no-install-recommends install \
+        ant \
         bzip2 \
         ca-certificates \
         ccache \
@@ -17,13 +19,22 @@ RUN apt-get -y --quiet --no-install-recommends install \
         genromfs \
         git \
         gosu \
+        iproute \
+        iputils-ping \
         lcov \
+        libeigen3-dev \
+        libopencv-dev \
         make \
+        net-tools \
         ninja-build \
-        openjdk-8-jdk-headless \
+        openjdk-8-jdk \
         patch \
+        pkg-config \
+        protobuf-compiler \
         python-argparse \
+        python-dev \
         python-empy \
+        python-numpy \
         python-pip \
         python-serial \
         python-software-properties \
@@ -33,8 +44,8 @@ RUN apt-get -y --quiet --no-install-recommends install \
         sudo \
         unzip \
         vim-common \
-        wget \
         xsltproc \
+        wget \
         zip \
     && apt-get -y autoremove \
     && apt-get clean autoclean \
@@ -47,12 +58,6 @@ RUN apt-get -y --quiet --no-install-recommends install \
     && pip install cpp-coveralls \
     # jinja template generation
     && pip install jinja2 \
-    # astyle v2.06
-    && wget https://downloads.sourceforge.net/project/astyle/astyle/astyle%202.06/astyle_2.06_linux.tar.gz -O /tmp/astyle.tar.gz \
-    && tar -xvf /tmp/astyle.tar.gz && cd astyle/src && make -f ../build/gcc/Makefile && cp bin/astyle /usr/local/bin && cd .. && rm -rf astyle \
-    # manual ccache setup
-    #&& ln -s /usr/bin/ccache /usr/lib/ccache/cc \
-    #&& ln -s /usr/bin/ccache /usr/lib/ccache/c++ \
     # cleanup
     && rm -rf /var/lib/apt/lists/{apt,dpkg,cache,log} /tmp/* /var/tmp/* \
     # Add Fast-RTPS
@@ -60,11 +65,56 @@ RUN apt-get -y --quiet --no-install-recommends install \
     && ln -s /opt/eProsima_FastRTPS-1.5.0-Linux/bin/fastrtpsgen /usr/local/bin/fastrtpsgen \
     && mkdir -p /usr/local/share/fastrtps && ln -s /opt/eProsima_FastRTPS-1.5.0-Linux/share/fastrtps/fastrtpsgen.jar /usr/local/share/fastrtps/fastrtpsgen.jar
 
+# Gazebo
+RUN wget --quiet http://packages.osrfoundation.org/gazebo.key -O - | apt-key add - \
+    && sh -c 'echo "deb http://packages.osrfoundation.org/gazebo/ubuntu-stable xenial main" > /etc/apt/sources.list.d/gazebo-stable.list' \
+    && apt-get update \
+    && apt-get -y --quiet --no-install-recommends install \
+        gazebo7         \
+        libgazebo7-dev
+
+# GStreamer
+RUN apt-get -y --no-install-recommends install \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-plugins-base-apps \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-tools \
+    v4l-utils
+
+# ROS Kinetic
+RUN apt-key adv --keyserver hkp://ha.pool.sks-keyservers.net:80 --recv-key 421C365BD9FF1F717815A3895523BAEEB01FA116 \
+    && sh -c 'echo "deb http://packages.ros.org/ros/ubuntu xenial main" > /etc/apt/sources.list.d/ros-latest.list' \
+    && sh -c 'echo "deb http://packages.ros.org/ros-shadow-fixed/ubuntu/ xenial main" > /etc/apt/sources.list.d/ros-shadow.list' \
+    && apt-get update \
+    && apt-get -y --no-install-recommends install \
+        ros-kinetic-gazebo-ros-pkgs \
+        ros-kinetic-mavros \
+        ros-kinetic-mavros-extras \
+        ros-kinetic-ros-base \
+    && apt-get -y autoremove \
+    && apt-get clean autoclean \
+    && rm -rf /var/lib/apt/lists/{apt,dpkg,cache,log} /tmp/* /var/tmp/*
+
+# Initialize ROS
+RUN geographiclib-get-geoids egm96-5 \
+    && rosdep init                   \
+    && rosdep update
+
+ENV HOME /root
+RUN echo 'source /opt/ros/kinetic/setup.bash' >> ${HOME}/.bashrc
+ENV CATKIN_WS ${HOME}/ws
+RUN echo 'export CATKIN_WS=\${HOME}/ws'          >> ${HOME}/.bashrc
+RUN echo 'source \${CATKIN_WS}/devel/setup.bash' >> ${HOME}/.bashrc
+
 ENV CCACHE_CPP2=1
 ENV CCACHE_MAXSIZE=1G
 ENV DISPLAY :0
-ENV PATH "/usr/lib/ccache:$PATH"
+#ENV PATH "/usr/lib/ccache:$PATH"
 ENV TERM=xterm
+# Some QT-Apps/Gazebo don't not show controls without this
+ENV QT_X11_NO_MITSHM 1
 
 # SITL UDP PORTS
 EXPOSE 14556/udp
